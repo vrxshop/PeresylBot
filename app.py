@@ -104,6 +104,9 @@ def get_status_text():
 # ==================================================
 # ОСНОВНАЯ ЛОГИКА ПЕРЕСЫЛКИ (ЧЕРЕЗ TELEGON)
 # ==================================================
+# ==================================================
+# ОСНОВНАЯ ЛОГИКА ПЕРЕСЫЛКИ (ЧЕРЕЗ TELEGON)
+# ==================================================
 async def forward_all_messages():
     global is_running, forward_task
     
@@ -113,6 +116,22 @@ async def forward_all_messages():
     if not source or not target:
         await bot.send_message(ADMIN_IDS[0], "❌ Не настроены каналы!")
         return
+    
+    # ========== ОТЛАДКА: Показать все диалоги ==========
+    await bot.send_message(ADMIN_IDS[0], "📋 Получаю список всех диалогов...")
+    try:
+        dialogs = []
+        async for dialog in user_client.iter_dialogs():
+            dialogs.append(f"{dialog.name} (ID: {dialog.id})")
+            if len(dialogs) >= 20:
+                break
+        await bot.send_message(
+            ADMIN_IDS[0], 
+            f"📂 Найдено диалогов:\n" + "\n".join(dialogs[:10])
+        )
+    except Exception as e:
+        await bot.send_message(ADMIN_IDS[0], f"❌ Ошибка получения диалогов: {e}")
+    # ===================================================
     
     try:
         source_entity = await user_client.get_entity(int(source))
@@ -128,63 +147,7 @@ async def forward_all_messages():
         await bot.send_message(ADMIN_IDS[0], f"❌ Канал не найден! Проверь ID: {e}")
         return
     
-    await bot.send_message(ADMIN_IDS[0], "📋 Собираю все сообщения...")
-    
-    messages = []
-    try:
-        async for msg in user_client.iter_messages(source_entity, limit=None):
-            messages.append(msg)
-    except Exception as e:
-        await bot.send_message(ADMIN_IDS[0], f"❌ Ошибка получения сообщений: {e}")
-        return
-    
-    total = len(messages)
-    forwarded = 0
-    skipped = 0
-    is_running = True
-    
-    await bot.send_message(ADMIN_IDS[0], f"📋 Найдено {total} сообщений. Начинаю пересылку...")
-    
-    for i, msg in enumerate(reversed(messages), 1):
-        if not is_running:
-            await bot.send_message(ADMIN_IDS[0], "⏹️ Пересылка остановлена.")
-            return
-        
-        try:
-            if msg.text and msg.text.startswith("/"):
-                skipped += 1
-                continue
-            
-            await user_client.forward_messages(target_entity, msg)
-            forwarded += 1
-            
-            if forwarded % 50 == 0:
-                await bot.send_message(
-                    ADMIN_IDS[0],
-                    f"📊 Прогресс: {forwarded}/{total} ({forwarded*100//total}%)"
-                )
-            
-            if forwarded % 10 == 0:
-                await asyncio.sleep(10)
-            
-            if forwarded % 100 == 0:
-                await bot.send_message(ADMIN_IDS[0], "⏸️ Большая пауза 3 минуты...")
-                await asyncio.sleep(180)
-                
-        except Exception as e:
-            await bot.send_message(ADMIN_IDS[0], f"❌ Ошибка: {e}")
-            skipped += 1
-            await asyncio.sleep(2)
-    
-    is_running = False
-    await bot.send_message(
-        ADMIN_IDS[0],
-        f"✅ <b>ПЕРЕСЫЛКА ЗАВЕРШЕНА!</b>\n\n"
-        f"📤 Переслано: {forwarded}\n"
-        f"⏩ Пропущено: {skipped}\n"
-        f"📊 Всего: {total}"
-    )
-
+    # ... остальной код
 # ==================================================
 # ХЭНДЛЕРЫ БОТА (Aiogram)
 # ==================================================
