@@ -2,7 +2,9 @@ import logging
 import asyncio
 import os
 import json
+import threading
 from datetime import datetime
+from flask import Flask
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
@@ -13,13 +15,28 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_IDS = [8370080332, 8559381302, 8924977674]  # ТВОИ АДМИНЫ
+# ==================================================
+# FLASK для Render (healthcheck)
+# ==================================================
+flask_app = Flask(__name__)
 
-# ФИЛЬТР ДЛЯ АДМИНОВ
-class AdminFilter:
-    async def __call__(self, message: Message):
-        return message.from_user.id in ADMIN_IDS
+@flask_app.route('/')
+def home():
+    return "🤖 Бот для пересылки работает!"
+
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    flask_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+# ==================================================
+# КОНФИГУРАЦИЯ
+# ==================================================
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_IDS = [8370080332, 8559381302, 8924977674]
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
@@ -112,17 +129,6 @@ def get_status_text():
 3. Нажми "Старт пересылки"
 4. Бот начнёт пересылку всех сообщений
 5. Нажми "Остановить" в любой момент"""
-
-# ==================================================
-# ДЕКОРАТОР ДЛЯ ПРОВЕРКИ АДМИНА
-# ==================================================
-def admin_only(func):
-    async def wrapper(message: Message, *args, **kwargs):
-        if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Только для админов!")
-            return
-        return await func(message, *args, **kwargs)
-    return wrapper
 
 # ==================================================
 # ХЭНДЛЕРЫ
@@ -315,6 +321,8 @@ async def forward_messages():
     forwarded_count = 0
     skipped_count = 0
     is_running = True
+    config["is_running"] = True
+    save_config(config)
     
     await bot.send_message(
         ADMIN_IDS[0], 
@@ -324,9 +332,12 @@ async def forward_messages():
     for i, msg in enumerate(reversed(messages), 1):
         if not is_running:
             await bot.send_message(ADMIN_IDS[0], "⏹️ Пересылка остановлена пользователем.")
+            config["is_running"] = False
+            save_config(config)
             return
         
         try:
+            # Пропускаем служебные сообщения
             if msg.text and msg.text.startswith("/"):
                 skipped_count += 1
                 continue
@@ -353,6 +364,9 @@ async def forward_messages():
             await asyncio.sleep(2)
     
     is_running = False
+    config["is_running"] = False
+    save_config(config)
+    
     await bot.send_message(
         ADMIN_IDS[0],
         f"✅ <b>ПЕРЕСЫЛКА ЗАВЕРШЕНА!</b>\n\n"
@@ -395,6 +409,8 @@ async def stop_forward(callback: CallbackQuery):
     await callback.answer()
     global is_running
     is_running = False
+    config["is_running"] = False
+    save_config(config)
     await callback.message.edit_text("⏹️ Пересылка остановлена.", reply_markup=get_main_keyboard())
 
 @dp.callback_query(F.data == "status")
@@ -421,4 +437,9 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    # Запускаем Flask в отдельном потоке для Render
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print("✅ Flask запущен в фоновом потоке!")
+    
     asyncio.run(main())
