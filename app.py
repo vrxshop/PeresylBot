@@ -26,15 +26,16 @@ def run_flask():
 # ==================================================
 # КОНФИГУРАЦИЯ
 # ==================================================
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
+API_ID = int(os.getenv("API_ID", 38768855))
+API_HASH = os.getenv("API_HASH", "063f9c49fb067c9402fa3e36d8b1355d")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_IDS = [8370080332, 8559381302, 8924977674]
 CONFIG_FILE = "forward_config.json"
+SESSION_FILE = "fff.session"  # <-- ТВОЙ ФАЙЛ СЕССИИ
 
-# Telethon клиент (пользовательский)
-user_client = TelegramClient('user_session', API_ID, API_HASH)
+# Telethon клиент с указанием файла сессии
+user_client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
 # Aiogram бот (для управления)
 from aiogram import Bot, Dispatcher, types, F
@@ -295,13 +296,22 @@ async def back(callback: CallbackQuery):
 async def main():
     print("🚀 ЗАПУСК БОТА...")
     
+    # Проверяем, есть ли файл сессии
+    if os.path.exists(SESSION_FILE):
+        print(f"✅ Файл сессии {SESSION_FILE} найден!")
+    else:
+        print(f"⚠️ Файл сессии {SESSION_FILE} НЕ НАЙДЕН! Запусти скрипт локально для создания сессии.")
+    
+    # Запускаем Telethon клиент (с готовой сессией)
     await user_client.start()
     print("✅ Telethon клиент запущен")
     
+    # Запускаем Aiogram бота
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    # Запускаем Flask для Render
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     print("✅ Flask запущен в фоновом потоке!")
